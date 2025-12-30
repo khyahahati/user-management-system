@@ -9,9 +9,10 @@ const errorMiddleware = require('./middlewares/error.middleware');
 const app = express();
 
 app.use(cors({
-  origin: ['http://localhost:5173'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.json());
