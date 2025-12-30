@@ -8,6 +8,8 @@ const assert = require('node:assert');
 
 const authController = require('../controllers/auth.controller');
 const userController = require('../controllers/user.controller');
+const adminController = require('../controllers/admin.controller');
+const roleMiddleware = require('../middlewares/role.middleware');
 const { prisma } = require('../config/db');
 const { hashPassword } = require('../utils/password');
 
@@ -206,5 +208,83 @@ test('change password fails with incorrect current password', async () => {
   } finally {
     prisma.user.findUnique = originalFindUnique;
     prisma.user.update = originalUpdate;
+  }
+});
+
+test('non-admin access to admin route returns forbidden error', async () => {
+  const req = {
+    user: { userId: 'user-id', role: 'USER' }
+  };
+
+  const res = createMockRes();
+  let capturedError = null;
+
+  const middleware = roleMiddleware('ADMIN');
+
+  await middleware(req, res, (err) => {
+    capturedError = err;
+  });
+
+  assert.ok(capturedError);
+  assert.strictEqual(capturedError.status, 403);
+  assert.strictEqual(capturedError.message, 'Forbidden');
+});
+
+test('admin can list users with pagination metadata', async () => {
+  const originalFindMany = prisma.user.findMany;
+  const originalCount = prisma.user.count;
+
+  prisma.user.findMany = async () => ([
+    {
+      id: 'user-1',
+      fullName: 'User One',
+      email: 'user1@example.com',
+      role: 'USER',
+      status: 'ACTIVE',
+      createdAt: new Date('2025-01-01T00:00:00Z')
+    }
+  ]);
+
+  prisma.user.count = async () => 1;
+
+  const req = {
+    user: { userId: 'admin-id', role: 'ADMIN' },
+    query: { page: '1', limit: '10' }
+  };
+
+  const res = createMockRes();
+
+  try {
+    await adminController.listUsers(req, res, (err) => {
+      if (err) {
+        throw err;
+      }
+    });
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(res.body, {
+      success: true,
+      data: {
+        users: [
+          {
+            id: 'user-1',
+            fullName: 'User One',
+            email: 'user1@example.com',
+            role: 'USER',
+            status: 'ACTIVE',
+            createdAt: new Date('2025-01-01T00:00:00Z')
+          }
+        ],
+        pagination: {
+          page: 1,
+          limit: 10,
+          totalUsers: 1,
+          totalPages: 1
+        }
+      }
+    });
+  } finally {
+    prisma.user.findMany = originalFindMany;
+    prisma.user.count = originalCount;
   }
 });
