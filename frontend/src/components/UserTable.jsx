@@ -6,6 +6,8 @@ const UserTable = ({
   onToggleStatus,
   isLoading,
   actionUserId,
+  currentUserId,
+  currentUserRole,
 }) => {
   return (
     <div className="card">
@@ -34,6 +36,17 @@ const UserTable = ({
               users.map((user) => {
                 const isProcessing = actionUserId === user.id;
                 const isActive = user.status === 'ACTIVE';
+                const isSelf = user.id === currentUserId;
+                const isAdminTarget = user.role === 'ADMIN';
+                const canManage = !isSelf && !isAdminTarget && currentUserRole === 'ADMIN';
+                const isDisabled = isProcessing || isLoading || !canManage;
+                const buttonLabel = isProcessing
+                  ? 'Processing…'
+                  : !canManage
+                  ? 'Not available'
+                  : isActive
+                  ? 'Deactivate'
+                  : 'Activate';
                 return (
                   <tr key={user.id}>
                     <td>{user.fullName}</td>
@@ -47,13 +60,9 @@ const UserTable = ({
                         type="button"
                         className="button button--link"
                         onClick={() => onToggleStatus(user)}
-                        disabled={isProcessing || isLoading}
+                        disabled={isDisabled}
                       >
-                        {isProcessing
-                          ? 'Processing…'
-                          : isActive
-                          ? 'Deactivate'
-                          : 'Activate'}
+                        {buttonLabel}
                       </button>
                     </td>
                   </tr>

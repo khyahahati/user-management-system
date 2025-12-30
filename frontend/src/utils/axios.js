@@ -15,4 +15,22 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+
+    if (status === 401) {
+      window.localStorage.removeItem('token');
+      window.localStorage.removeItem('user');
+
+      if (window.location.pathname !== '/login') {
+        window.location.replace('/login');
+      }
+    }
+
+    return Promise.reject(error);
+  },
+);
+
 export default apiClient;

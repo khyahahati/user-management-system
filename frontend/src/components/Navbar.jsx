@@ -23,6 +23,11 @@ const Navbar = () => {
             <NavLink to="/dashboard" className={navLinkClass}>
               Dashboard
             </NavLink>
+            {user?.role === 'ADMIN' && (
+              <NavLink to="/admin/users" className={navLinkClass}>
+                Admin
+              </NavLink>
+            )}
             <NavLink to="/profile" className={navLinkClass}>
               Profile
             </NavLink>

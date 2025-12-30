@@ -14,7 +14,7 @@ const Dashboard = () => {
   const isAdmin = user?.role === 'ADMIN';
   const [users, setUsers] = useState([]);
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({ totalPages: 1, totalCount: 0 });
+  const [pagination, setPagination] = useState({ totalPages: 1, totalUsers: 0, limit: PAGE_LIMIT });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [actionUser, setActionUser] = useState(null);
@@ -28,13 +28,31 @@ const Dashboard = () => {
       setError('');
       try {
         const response = await getUsers({ page: requestedPage, limit: PAGE_LIMIT });
-        const { users: fetchedUsers, page: currentPage, totalPages, totalCount } = response.data.data;
-        setUsers(fetchedUsers);
+        const { users: fetchedUsers, pagination: meta } = response?.data?.data || {};
+
+        const nextUsers = Array.isArray(fetchedUsers) ? fetchedUsers : [];
+        const currentPage = meta?.page ?? requestedPage;
+        const totalPages = meta?.totalPages ?? 1;
+        const totalUsers = meta?.totalUsers ?? nextUsers.length;
+        const limit = meta?.limit ?? PAGE_LIMIT;
+
+        setUsers(nextUsers);
         setPage(currentPage);
-        setPagination({ totalPages: Math.max(totalPages, 1), totalCount });
+        setPagination({
+          totalPages: Math.max(totalPages, 1),
+          totalUsers,
+          limit,
+        });
       } catch (requestError) {
+        const status = requestError?.response?.status;
         const responseMessage = requestError?.response?.data?.message;
-        setError(responseMessage || 'Unable to load users.');
+        if (status === 403) {
+          setError(responseMessage || 'Unauthorized');
+          setUsers([]);
+          setPagination({ totalPages: 1, totalUsers: 0, limit: PAGE_LIMIT });
+        } else {
+          setError(responseMessage || 'Unable to load users.');
+        }
       } finally {
         setIsLoading(false);
         setActionUserId(null);
@@ -44,11 +62,11 @@ const Dashboard = () => {
   );
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!isAdmin || !isAdminRoute) {
       return;
     }
     loadUsers(page);
-  }, [isAdmin, loadUsers, page]);
+  }, [isAdmin, isAdminRoute, loadUsers, page]);
 
   useEffect(() => {
     if (!isAdminRoute) {
@@ -65,6 +83,9 @@ const Dashboard = () => {
   };
 
   const handleToggleStatus = (targetUser) => {
+    if (!targetUser || targetUser.id === user?.id || targetUser.role === 'ADMIN') {
+      return;
+    }
     setActionUser(targetUser);
   };
 
@@ -78,6 +99,10 @@ const Dashboard = () => {
     }
     setActionUserId(actionUser.id);
     try {
+      if (actionUser.id === user?.id || actionUser.role === 'ADMIN') {
+        setError('Unauthorized');
+        return;
+      }
       if (actionUser.status === 'ACTIVE') {
         await deactivateUser(actionUser.id);
       } else {
@@ -85,8 +110,13 @@ const Dashboard = () => {
       }
       await loadUsers(page);
     } catch (requestError) {
+      const status = requestError?.response?.status;
       const responseMessage = requestError?.response?.data?.message;
-      setError(responseMessage || 'Unable to update user status.');
+      if (status === 403) {
+        setError(responseMessage || 'Unauthorized');
+      } else {
+        setError(responseMessage || 'Unable to update user status.');
+      }
     } finally {
       setActionUser(null);
     }
@@ -99,7 +129,7 @@ const Dashboard = () => {
         <AdminRoute>
           <div className="page__section">
             <p className="page__subtitle">
-              {pagination.totalCount} user{pagination.totalCount === 1 ? '' : 's'} in the system.
+              {pagination.totalUsers} user{pagination.totalUsers === 1 ? '' : 's'} in the system.
             </p>
             {error && <div className="alert alert--error">{error}</div>}
             <UserTable
@@ -110,6 +140,8 @@ const Dashboard = () => {
               onToggleStatus={handleToggleStatus}
               isLoading={isLoading}
               actionUserId={actionUserId}
+              currentUserId={user?.id}
+              currentUserRole={user?.role}
             />
           </div>
           {actionUser && (

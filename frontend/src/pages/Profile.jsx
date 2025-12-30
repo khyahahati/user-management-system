@@ -1,25 +1,58 @@
-import { useEffect, useState } from 'react';
-import { changePassword, updateProfile } from '../api/user.api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { changePassword, getProfile, updateProfile } from '../api/user.api';
 import { useAuth } from '../context/AuthContext';
 
 const Profile = () => {
-  const { user, setUser, refreshUser } = useAuth();
+  const { user, setUser } = useAuth();
+  const [profileData, setProfileData] = useState(null);
   const [profileValues, setProfileValues] = useState({ fullName: '', email: '' });
   const [passwordValues, setPasswordValues] = useState({ currentPassword: '', newPassword: '' });
   const [profileErrors, setProfileErrors] = useState({});
   const [passwordErrors, setPasswordErrors] = useState({});
   const [profileFeedback, setProfileFeedback] = useState('');
   const [passwordFeedback, setPasswordFeedback] = useState('');
-  const [apiError, setApiError] = useState('');
+  const [profileApiError, setProfileApiError] = useState('');
+  const [profileLoadError, setProfileLoadError] = useState('');
+  const [passwordApiError, setPasswordApiError] = useState('');
   const [isProfileSubmitting, setIsProfileSubmitting] = useState(false);
   const [isPasswordSubmitting, setIsPasswordSubmitting] = useState(false);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+
+  const syncProfileState = useCallback(
+    (profile) => {
+      if (!profile) {
+        return;
+      }
+      setProfileData(profile);
+      setProfileValues({
+        fullName: profile.fullName ?? '',
+        email: profile.email ?? '',
+      });
+      setUser(profile);
+    },
+    [setUser],
+  );
+
+  const fetchProfile = useCallback(async () => {
+    setIsProfileLoading(true);
+    setProfileLoadError('');
+    try {
+      const response = await getProfile();
+      const currentProfile = response?.data?.data;
+      syncProfileState(currentProfile);
+      setProfileFeedback('');
+      setProfileApiError('');
+    } catch (error) {
+      const message = error?.response?.data?.message || 'Unable to load profile.';
+      setProfileLoadError(message);
+    } finally {
+      setIsProfileLoading(false);
+    }
+  }, [syncProfileState]);
 
   useEffect(() => {
-    if (!user) {
-      return;
-    }
-    setProfileValues({ fullName: user.fullName, email: user.email });
-  }, [user]);
+    fetchProfile();
+  }, [fetchProfile]);
 
   const validateProfile = () => {
     const errors = {};
@@ -55,16 +88,20 @@ const Profile = () => {
   const handleProfileChange = (event) => {
     const { name, value } = event.target;
     setProfileValues((prev) => ({ ...prev, [name]: value }));
+    setProfileFeedback('');
+    setProfileApiError('');
   };
 
   const handlePasswordChange = (event) => {
     const { name, value } = event.target;
     setPasswordValues((prev) => ({ ...prev, [name]: value }));
+    setPasswordFeedback('');
+    setPasswordApiError('');
   };
 
   const handleProfileSubmit = async (event) => {
     event.preventDefault();
-    setApiError('');
+    setProfileApiError('');
     setProfileFeedback('');
     const errors = validateProfile();
     setProfileErrors(errors);
@@ -74,20 +111,24 @@ const Profile = () => {
 
     setIsProfileSubmitting(true);
     try {
-      const response = await updateProfile({
+      const payload = {
         fullName: profileValues.fullName.trim(),
         email: profileValues.email.trim(),
-      });
-      const updatedUser = response?.data?.data;
-      if (updatedUser) {
-        setUser(updatedUser);
-      } else {
-        await refreshUser();
-      }
-      setProfileFeedback('Profile updated successfully.');
+      };
+
+      const updateResponse = await updateProfile(payload);
+
+      const refreshedProfileResponse = await getProfile();
+      const refreshedProfile = refreshedProfileResponse?.data?.data;
+      syncProfileState(refreshedProfile);
+
+      setProfileErrors({});
+
+      const successMessage = updateResponse?.data?.message || 'Profile updated successfully.';
+      setProfileFeedback(successMessage);
     } catch (error) {
       const responseMessage = error?.response?.data?.message;
-      setApiError(responseMessage || 'Unable to update profile.');
+      setProfileApiError(responseMessage || 'Unable to update profile.');
     } finally {
       setIsProfileSubmitting(false);
     }
@@ -95,7 +136,7 @@ const Profile = () => {
 
   const handlePasswordSubmit = async (event) => {
     event.preventDefault();
-    setApiError('');
+    setPasswordApiError('');
     setPasswordFeedback('');
     const errors = validatePassword();
     setPasswordErrors(errors);
@@ -110,14 +151,38 @@ const Profile = () => {
         newPassword: passwordValues.newPassword,
       });
       setPasswordFeedback('Password updated successfully.');
+      setPasswordErrors({});
       setPasswordValues({ currentPassword: '', newPassword: '' });
     } catch (error) {
       const responseMessage = error?.response?.data?.message;
-      setApiError(responseMessage || 'Unable to change password.');
+      setPasswordApiError(responseMessage || 'Unable to change password.');
     } finally {
       setIsPasswordSubmitting(false);
     }
   };
+
+  const handleProfileCancel = () => {
+    if (!profileData) {
+      return;
+    }
+    setProfileValues({
+      fullName: profileData.fullName ?? '',
+      email: profileData.email ?? '',
+    });
+    setProfileErrors({});
+    setProfileApiError('');
+    setProfileFeedback('');
+  };
+
+  const hasProfileChanges = useMemo(() => {
+    if (!profileData) {
+      return false;
+    }
+    return (
+      profileData.fullName !== profileValues.fullName.trim() ||
+      profileData.email !== profileValues.email.trim()
+    );
+  }, [profileData, profileValues.fullName, profileValues.email]);
 
   return (
     <section className="page">
@@ -125,6 +190,7 @@ const Profile = () => {
       <div className="page__grid">
         <div className="card">
           <h2 className="card__title">Account Details</h2>
+          {profileLoadError && <div className="alert alert--error">{profileLoadError}</div>}
           <form className="form" onSubmit={handleProfileSubmit} noValidate>
             <label className="form__field">
               <span>Full Name</span>
@@ -133,6 +199,7 @@ const Profile = () => {
                 name="fullName"
                 value={profileValues.fullName}
                 onChange={handleProfileChange}
+                disabled={isProfileLoading}
                 required
               />
               {profileErrors.fullName && <small className="form__error">{profileErrors.fullName}</small>}
@@ -144,14 +211,38 @@ const Profile = () => {
                 name="email"
                 value={profileValues.email}
                 onChange={handleProfileChange}
+                disabled={isProfileLoading}
                 required
               />
               {profileErrors.email && <small className="form__error">{profileErrors.email}</small>}
             </label>
+            <div className="form__readonly">
+              <span>Role</span>
+              <p>{profileData?.role ?? user?.role ?? '—'}</p>
+            </div>
+            <div className="form__readonly">
+              <span>Status</span>
+              <p>{profileData?.status ?? user?.status ?? '—'}</p>
+            </div>
+            {profileApiError && <div className="alert alert--error">{profileApiError}</div>}
             {profileFeedback && <div className="form__success">{profileFeedback}</div>}
-            <button type="submit" className="button button--primary" disabled={isProfileSubmitting}>
-              {isProfileSubmitting ? 'Saving…' : 'Save Changes'}
-            </button>
+            <div className="form__actions">
+              <button
+                type="submit"
+                className="button button--primary"
+                disabled={isProfileSubmitting || isProfileLoading || !hasProfileChanges}
+              >
+                {isProfileSubmitting ? 'Saving…' : 'Save Changes'}
+              </button>
+              <button
+                type="button"
+                className="button"
+                onClick={handleProfileCancel}
+                disabled={isProfileSubmitting || isProfileLoading || !hasProfileChanges}
+              >
+                Cancel
+              </button>
+            </div>
           </form>
         </div>
         <div className="card">
@@ -185,6 +276,7 @@ const Profile = () => {
                 <small className="form__error">{passwordErrors.newPassword}</small>
               )}
             </label>
+            {passwordApiError && <div className="alert alert--error">{passwordApiError}</div>}
             {passwordFeedback && <div className="form__success">{passwordFeedback}</div>}
             <button type="submit" className="button button--primary" disabled={isPasswordSubmitting}>
               {isPasswordSubmitting ? 'Updating…' : 'Update Password'}
@@ -192,7 +284,6 @@ const Profile = () => {
           </form>
         </div>
       </div>
-      {apiError && <div className="alert alert--error">{apiError}</div>}
     </section>
   );
 };
