@@ -7,6 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const authController = require('../controllers/auth.controller');
+const userController = require('../controllers/user.controller');
 const { prisma } = require('../config/db');
 const { hashPassword } = require('../utils/password');
 
@@ -100,6 +101,108 @@ test('login with invalid password returns error', async () => {
     assert.ok(capturedError);
     assert.strictEqual(capturedError.status, 401);
     assert.strictEqual(capturedError.message, 'Invalid credentials');
+  } finally {
+    prisma.user.findUnique = originalFindUnique;
+    prisma.user.update = originalUpdate;
+  }
+});
+
+test('update profile successfully updates provided fields', async () => {
+  const originalFindUnique = prisma.user.findUnique;
+  const originalFindFirst = prisma.user.findFirst;
+  const originalUpdate = prisma.user.update;
+
+  prisma.user.findUnique = async ({ where }) => {
+    if (where.id === 'user-id') {
+      return {
+        id: 'user-id',
+        fullName: 'Old Name',
+        email: 'old@example.com',
+        role: 'USER',
+        status: 'ACTIVE'
+      };
+    }
+    return null;
+  };
+
+  prisma.user.findFirst = async () => null;
+
+  prisma.user.update = async ({ data }) => ({
+    id: 'user-id',
+    ...data
+  });
+
+  const req = {
+    user: { userId: 'user-id' },
+    body: {
+      fullName: 'New Name',
+      email: 'new@example.com'
+    }
+  };
+
+  const res = createMockRes();
+
+  try {
+    await userController.updateProfile(req, res, (err) => {
+      if (err) {
+        throw err;
+      }
+    });
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(res.body, {
+      success: true,
+      message: 'Profile updated successfully'
+    });
+  } finally {
+    prisma.user.findUnique = originalFindUnique;
+    prisma.user.findFirst = originalFindFirst;
+    prisma.user.update = originalUpdate;
+  }
+});
+
+test('change password fails with incorrect current password', async () => {
+  const originalFindUnique = prisma.user.findUnique;
+  const originalUpdate = prisma.user.update;
+
+  const hashedPassword = await hashPassword('CorrectPass@123');
+  let updateCalled = false;
+
+  prisma.user.findUnique = async ({ where }) => {
+    if (where.id === 'user-id') {
+      return {
+        id: 'user-id',
+        password: hashedPassword
+      };
+    }
+    return null;
+  };
+
+  prisma.user.update = async () => {
+    updateCalled = true;
+    return null;
+  };
+
+  const req = {
+    user: { userId: 'user-id' },
+    body: {
+      currentPassword: 'WrongPass@123',
+      newPassword: 'NewStrongPass@123'
+    }
+  };
+
+  const res = createMockRes();
+  let capturedError = null;
+
+  try {
+    await userController.updatePassword(req, res, (err) => {
+      capturedError = err;
+    });
+
+    assert.ok(capturedError);
+    assert.strictEqual(capturedError.status, 401);
+    assert.strictEqual(capturedError.message, 'Current password is incorrect');
+    assert.strictEqual(updateCalled, false);
   } finally {
     prisma.user.findUnique = originalFindUnique;
     prisma.user.update = originalUpdate;
