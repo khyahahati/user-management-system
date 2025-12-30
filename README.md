@@ -60,7 +60,7 @@ user-management-system/
 
 # Deployment
 
-- Backend: Railway (Backend URL: <to be added>)
+- Backend: Render (Backend URL: https://user-management-system-jdv8.onrender.com/)
 - Frontend: Railway (Frontend URL: <to be added>)
 - Database: PostgreSQL (Docker locally, Railway-hosted in production)
 
@@ -82,7 +82,7 @@ user-management-system/
 ## Frontend Setup
 1. cd frontend
 2. npm install
-3. Copy .env.example to .env and set VITE_API_URL
+3. Copy .env.example to .env and set VITE_API_BASE_URL
 4. npm run dev
 
 # Environment Variables
@@ -94,7 +94,7 @@ user-management-system/
 - JWT_EXPIRES_IN
 
 ## Frontend
-- VITE_API_URL
+- VITE_API_BASE_URL
 
 # API Documentation
 
