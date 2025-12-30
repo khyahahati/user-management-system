@@ -1,12 +1,22 @@
 import axios from 'axios';
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const rawApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
 
-if (!API_BASE_URL) {
+if (!rawApiBaseUrl) {
   throw new Error('VITE_API_BASE_URL is not defined');
 }
 
+export const API_BASE_URL = rawApiBaseUrl.replace(/\/+$/, '');
+
+export const buildApiUrl = (path) => {
+  if (!path.startsWith('/')) {
+    throw new Error('API paths must start with a leading slash');
+  }
+  return `${API_BASE_URL}${path}`;
+};
+
 const apiClient = axios.create({
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
