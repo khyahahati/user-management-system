@@ -15,6 +15,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+// ⭐ THIS LINE IS REQUIRED
+app.options('*', cors());
+
 app.use(express.json());
 
 app.get('/', (req, res) => {
